@@ -1,0 +1,78 @@
+# Podman Compose - Service name
+
+# Commons
+x-common-options: &common-options
+  mem_limit: 1g
+  cpus: 2.0
+  pids_limit: 100
+  cap_drop: [ ALL ]
+  cap_add: [ NET_BIND_SERVICE ]
+  tmpfs: [ /tmp ]
+  logging: { driver: journald }
+  security_opt: [ no-new-privileges:true ]
+  restart: unless-stopped
+  stop_grace_period: 30s
+x-common-healthcheck: &common-healthcheck
+  interval: 60s
+  timeout: 15s
+  retries: 3
+
+# Networks
+# Note: Networks must be created manually before using this template
+networks:
+  public_net:  { external: true }
+  private_net: { external: true }
+
+# Volumes
+# Note: Define volumes here to let conttainerd create them automatically
+volumes:
+  service_data_vol: { name: service_data_vol }
+  service_logs_vol: { name: service_logs_vol }
+
+# Services
+# Note: Use `podman-compose up` to start the services defined here
+services:
+
+  haproxy:
+    container_name: haproxy
+    image: docker.io/library/haproxy:lts
+    # Health
+    healthcheck:
+      test: ["CMD-SHELL", "pidof haproxy || exit 1"]
+      <<: *common-healthcheck
+    # Security
+    <<: *common-options
+    # Network
+    networks: [ private_net, public_net ]
+    ports: [ "3000:3000", "3100:3100" ]
+    # Storage
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:Z
+
+  service:
+    container_name: service
+    image: docker.io/<publisher>/<image>:<tag>
+    depends_on: [ service2 ]
+    entrypoint: [ "bash", "container-startup.sh" ]
+    command: ["app.py", "--debug"]
+    # Health
+    healthcheck:
+      test: ["CMD-SHELL", "pidof <process_name> || exit 1"]
+      <<: *common-healthcheck
+    # Security
+    user: "1000:1000"
+    <<: *common-options
+    # Network
+    networks: [ private_net ]
+    expose: [ "3000" ]
+    # Storage
+    volumes:
+      - ./service.conf:/usr/local/etc/service/service.conf:Z
+      - service_data_vol:/var/lib/service:Z
+      - service_logs_vol:/var/log/service:Z
+    # Variables
+    environment:
+      - ENV_VAR1=/bin/app
+      - ENV_VAR2=true
+      - ENV_VAR3=Admin
+      - TZ=${TZ:-UTC}
